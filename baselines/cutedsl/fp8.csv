@@ -1,0 +1,14 @@
+id,mma_inst,mma_tiler,cluster,two_cta,swizzle,raster,scheduler
+default,128x128x64,128x128x128,1x1,0,1,m,static_persistent
+small_k256,128x128x64,128x128x256,1x1,0,1,m,static_persistent
+wide_1cta,128x256x64,128x256x128,1x1,0,1,m,static_persistent
+wide_b_reuse,128x256x64,256x256x128,1x1,0,1,m,static_persistent
+two_cta_192,256x192x64,256x192x128,2x1,1,1,m,static_persistent
+historical_best,256x256x64,256x256x128,2x1,1,1,m,static_persistent
+two_cta_c22,256x256x64,256x256x128,2x2,1,1,m,static_persistent
+two_cta_c24,256x256x64,256x256x128,2x4,1,1,m,static_persistent
+two_cta_c41,256x256x64,256x256x128,4x1,1,1,m,static_persistent
+two_cta_c42,256x256x64,256x256x128,4x2,1,1,m,static_persistent
+two_cta_c44,256x256x64,256x256x128,4x4,1,1,m,static_persistent
+two_cta_k256,256x256x64,256x256x256,2x4,1,1,m,static_persistent
+b_reuse_c24,256x256x64,512x256x128,2x4,1,1,m,static_persistent

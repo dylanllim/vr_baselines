@@ -1,0 +1,6 @@
+*.out
+.protocol.cuh
+__pycache__/
+*.pyc
+build*/
+results/
