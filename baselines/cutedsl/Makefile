@@ -3,9 +3,9 @@ SIZE ?= 8192
 PYTHON ?= python3
 
 run:
-	$(PYTHON) runner.py --family $(FAMILY) --size $(SIZE)
+	$(PYTHON) runner.py $(FAMILY) $(SIZE)
 
 tune:
-	$(PYTHON) runner.py --family $(FAMILY) --size $(SIZE) --tune
+	$(PYTHON) runner.py $(FAMILY) $(SIZE) tune
 
 .PHONY: run tune

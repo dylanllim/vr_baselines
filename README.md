@@ -1,6 +1,6 @@
 # Vera Rubin GEMM baselines
 
-Minimal reproduction of the cuBLASLt, CuTeDSL, and CUTLASS FP8/NVFP4 baselines. CUTLASS is pinned as a submodule; no ThunderKittens code is included.
+Minimal reproduction of the cuBLASLt, CuTeDSL, and CUTLASS FP8/NVFP4 baselines.
 
 ## Setup
 
@@ -19,21 +19,23 @@ git submodule update --init
 - NVFP4 inputs: uniform packed E2M1 codes; UE4M3 block and FP32 global scales uniform `[0.1,10]` where the API exposes them.
 - Every reported sample: 5 warmups + 10 timed launches.
 - Inputs rotate over at least 3× L2 when the problem fits in cache.
-- Reference values: [`baselines/reference_results.csv`](baselines/reference_results.csv).
 
 ## Results
 
-Preliminary node 9 mean TFLOP/s from five samples. These were collected before the final unified protocol and must be replayed before publication; `pending` means the structural search is still running.
+Preliminary node 9 mean TFLOP/s from five samples. CuTeDSL NVFP4 values are
+legacy structural-search measurements and must be replayed with the fixed
+protocol above before publication. `pending` means the structural search is
+still running.
 
 ### NVFP4
 
 | M=N=K | CuTeDSL | cuBLASLt | CUTLASS |
 |---:|---:|---:|---:|
-| 1,024 | pending | 513 | 408 |
-| 2,048 | pending | 2,932 | 2,181 |
-| 4,096 | pending | 9,099 | 7,749 |
+| 1,024 | 157 | 513 | 408 |
+| 2,048 | 1,097 | 2,932 | 2,181 |
+| 4,096 | 9,571 | 9,099 | 7,749 |
 | 8,192 | pending | 16,623 | 13,322 |
-| 16,384 | pending | 15,393 | 12,379 |
+| 16,384 | 20,937 | 15,393 | 12,379 |
 | 32,768 | pending | 11,926 | 9,859 |
 
 ### FP8
@@ -49,28 +51,38 @@ Preliminary node 9 mean TFLOP/s from five samples. These were collected before t
 
 ## Run
 
-Normal runs replay the pinned winner and collect five fresh 5/10 samples:
+All backends use the same Make interface:
 
 ```bash
-make -C baselines/cublas FAMILY=fp8 SIZE=8192 run
-make -C baselines/cublas FAMILY=nvfp4 SIZE=8192 run
+CUDA_VISIBLE_DEVICES=<gpu> make -C baselines/<backend> \
+  FAMILY=<fp8|nvfp4> SIZE=<size> <run|tune>
 ```
 
-CuTeDSL imports Rubin kernels directly from `submodules/cutlass/examples/python/CuTeDSL/cute/rubin/kernel`:
+- Backends: `cublas`, `cutedsl`, or `cutlass`.
+- Sizes: `1024`, `2048`, `4096`, `8192`, `16384`, or `32768`.
+- `run` replays the pinned winner and collects five fresh samples.
+- `tune` searches again before collecting the samples.
+
+For example, the FP8 8K replay is identical across backends except for the backend name:
 
 ```bash
-PYTHON=/path/to/python make -C baselines/cutedsl FAMILY=fp8 SIZE=8192 run
-PYTHON=/path/to/python make -C baselines/cutedsl FAMILY=nvfp4 SIZE=8192 run
+CUDA_VISIBLE_DEVICES=1 make -C baselines/cublas  FAMILY=fp8 SIZE=8192 run
+CUDA_VISIBLE_DEVICES=1 make -C baselines/cutedsl FAMILY=fp8 SIZE=8192 run
+CUDA_VISIBLE_DEVICES=1 make -C baselines/cutlass FAMILY=fp8 SIZE=8192 run
 ```
 
-CUTLASS builds 40 SM107a kernels per datatype. Its build temporarily applies [`protocol.patch`](baselines/cutlass/protocol.patch) to initialize FP4 operands and scale tensors from the shared protocol, then restores the pinned submodule:
+Use `FAMILY=nvfp4` for NVFP4. Set `PYTHON=/path/to/python` on any command if the required Python packages are not installed in the default interpreter.
+
+### Backend setup
+
+- cuBLASLt compiles its selected family automatically on the first `run` or `tune`.
+- CuTeDSL imports the Rubin kernels directly from `submodules/cutlass/examples/python/CuTeDSL/cute/rubin/kernel` and requires PyTorch plus `nvidia-cutlass-dsl`.
+- CUTLASS requires its profiler to be built once before `run` or `tune`:
 
 ```bash
 make -C baselines/cutlass build
-make -C baselines/cutlass FAMILY=fp8 SIZE=8192 run
-make -C baselines/cutlass FAMILY=nvfp4 SIZE=8192 run
 ```
 
-Use `tune` instead of `run` to search again. CuTeDSL searches every checked-in configuration; CUTLASS screens every compiled kernel for two seconds; cuBLASLt times every returned top-32 heuristic candidate.
+CUTLASS builds 40 SM107a kernels per datatype. The stock profiler cannot independently initialize packed E2M1 operands and UE4M3 scales with the ranges required by our shared protocol. The build therefore applies [`protocol.patch`](baselines/cutlass/patches/protocol.patch) temporarily and restores the pinned submodule afterward. The patch changes profiler data initialization only, not the GEMM kernels.
 
-Use `CUDA_VISIBLE_DEVICES` to select the GPU. Results are TFLOP/s; all three backends emit BF16.
+CuTeDSL searches every checked-in configuration; CUTLASS screens every compiled kernel for two seconds; cuBLASLt times every returned top-32 heuristic candidate. Results are TFLOP/s, and all three backends emit BF16.

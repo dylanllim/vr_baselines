@@ -4,12 +4,12 @@ FAMILY ?= all
 JOBS ?= 64
 
 build:
-	JOBS=$(JOBS) ./build.sh
+	JOBS=$(JOBS) ./scripts/build.sh
 
 run:
-	$(PYTHON) benchmark.py --family $(FAMILY) --size $(SIZE)
+	$(PYTHON) runner.py $(FAMILY) $(SIZE)
 
 tune:
-	$(PYTHON) benchmark.py --family $(FAMILY) --size $(SIZE) --tune
+	$(PYTHON) runner.py $(FAMILY) $(SIZE) tune
 
 .PHONY: build run tune

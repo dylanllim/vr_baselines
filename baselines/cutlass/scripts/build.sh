@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-cutlass=${CUTLASS_DIR:-$here/../../submodules/cutlass}
-build=${BUILD_DIR:-$cutlass/build}
+here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+cutlass=$here/../../submodules/cutlass
+build=$cutlass/build
 cmake=${CMAKE:-cmake}
 cuda=${CUDA_HOME:-/usr/local/cuda}
-patch=$here/protocol.patch
+patch=$here/patches/protocol.patch
 
+# Match the shared NVFP4 operand/scale distributions without modifying kernels.
 if git -C "$cutlass" apply -R --check "$patch" 2>/dev/null; then
   git -C "$cutlass" apply -R "$patch"
 fi

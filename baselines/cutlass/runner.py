@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import argparse
 import csv
 from datetime import datetime, timezone
 import os
@@ -49,7 +48,6 @@ def command(profiler, family, size, kernel, output, final=False):
 
 
 def run(command, log, family):
-    print("COMMAND " + " ".join(map(str, command)), flush=True)
     env = os.environ.copy()
     if family == "nvfp4":
         env |= {
@@ -80,53 +78,48 @@ def rows(prefix):
 
 
 def pinned(family, size):
-    with (HERE / "winners.csv").open(newline="") as source:
+    with (HERE / "configs/winners.csv").open(newline="") as source:
         for row in csv.DictReader(source):
             if row["family"] == family and int(row["size"]) == size:
                 return row["kernel"]
     raise SystemExit(f"no pinned CUTLASS winner for {family} {size}")
 
 
-def benchmark(args, family, directory):
-    if args.tune:
+def benchmark(family, size, tune, profiler, directory):
+    if tune:
         prefix = directory / f"{family}_screen"
-        run(command(args.profiler, family, args.size, FAMILIES[family][1], prefix),
+        run(command(profiler, family, size, FAMILIES[family][1], prefix),
             prefix.with_suffix(".log"), family)
         candidates = rows(prefix)
         winner = max(candidates, key=lambda row: float(row["GFLOPs"]))["Operation"]
-        print(f"SELECTED family={family} candidates={len(candidates)} kernel={winner}")
+        print(f"ALGORITHM family={family} candidates={len(candidates)} kernel={winner}")
     else:
-        winner = pinned(family, args.size)
-        print(f"PINNED family={family} kernel={winner}")
+        winner = pinned(family, size)
     samples = []
     for rep in range(SAMPLES):
         prefix = directory / f"{family}_rep{rep + 1}"
-        run(command(args.profiler, family, args.size, winner, prefix, True),
+        run(command(profiler, family, size, winner, prefix, True),
             prefix.with_suffix(".log"), family)
         samples.append(float(rows(prefix)[0]["GFLOPs"]) / 1000)
-    print(f"SAMPLES_TFLOPS={','.join(map(str, samples))}")
-    print(f"Performance: {sum(samples) / len(samples):.6f} TFLOP/s")
+    values = ",".join(f"{value:.6f}" for value in samples)
+    print(f"RESULT family={family} size={size} "
+          f"mean_tflops={sum(samples) / len(samples):.6f} samples_tflops={values}")
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--family", choices=("all", *FAMILIES), default="all")
-    parser.add_argument("--size", type=int, choices=SIZES, default=8192)
-    parser.add_argument("--profiler", type=Path)
-    parser.add_argument("--results", type=Path, default=HERE / "results")
-    parser.add_argument("--tune", action="store_true")
-    args = parser.parse_args()
-    if args.profiler is None:
-        cutlass = Path(os.getenv("CUTLASS_DIR", HERE.parents[1] / "submodules/cutlass"))
-        args.profiler = cutlass / "build/tools/profiler/cutlass_profiler"
-    args.profiler = args.profiler.resolve()
-    if not args.profiler.is_file():
-        raise SystemExit(f"profiler not found: {args.profiler}")
+def main(argv=sys.argv[1:]):
+    if len(argv) not in (2, 3) or (len(argv) == 3 and argv[2] != "tune"):
+        raise SystemExit("usage: runner.py FAMILY SIZE [tune]")
+    family, size = argv[:2]
+    if family not in ("all", *FAMILIES) or (size := int(size)) not in SIZES:
+        raise SystemExit("unsupported family or size")
+    profiler = HERE.parents[1] / "submodules/cutlass/build/tools/profiler/cutlass_profiler"
+    if not profiler.is_file():
+        raise SystemExit("CUTLASS profiler not found; run make build")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    directory = args.results / f"{stamp}_{args.size}"
+    directory = HERE / "results" / f"{stamp}_{size}"
     directory.mkdir(parents=True)
-    for family in FAMILIES if args.family == "all" else (args.family,):
-        benchmark(args, family, directory)
+    for selected in FAMILIES if family == "all" else (family,):
+        benchmark(selected, size, len(argv) == 3, profiler, directory)
 
 
 if __name__ == "__main__":

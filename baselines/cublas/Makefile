@@ -1,26 +1,32 @@
+# FP8:   make FAMILY=fp8 build    # src/fp8.cu   -> build/fp8
+# NVFP4: make FAMILY=nvfp4 build  # src/nvfp4.cu -> build/nvfp4
+# Replace `build` with `run` or `tune` to execute the selected family.
 FAMILY ?= fp8
 SIZE ?= 8192
 NVCC ?= /usr/local/cuda/bin/nvcc
 PYTHON ?= python3
-OUT := $(FAMILY).out
-PROTOCOL := .protocol.cuh
+NVCCFLAGS ?= -std=c++20 -O3 --use_fast_math -gencode arch=compute_107a,code=sm_107a
+BUILD := build
+OUT := $(BUILD)/$(FAMILY)
+SOURCE := src/$(FAMILY).cu
+PROTOCOL := $(BUILD)/protocol.cuh
+
+build: $(OUT)
 
 $(PROTOCOL): ../protocol.py
+	mkdir -p $(BUILD)
 	$(PYTHON) $< > $@
 
-$(OUT): $(FAMILY).cu baseline_utils.cuh autotune.cuh $(PROTOCOL)
-	$(NVCC) -std=c++20 -O3 --use_fast_math -gencode arch=compute_107a,code=sm_107a $< -o $@ -lcublasLt -lcublas
+$(OUT): $(SOURCE) src/common.cuh src/algorithms.cuh $(PROTOCOL)
+	$(NVCC) $(NVCCFLAGS) -I$(BUILD) $< -o $@ -lcublasLt -lcublas
 
-run: $(OUT)
-	$(PYTHON) benchmark.py --binary ./$(OUT) --size $(SIZE)
+run: build
+	$(PYTHON) runner.py $(FAMILY) $(SIZE)
 
-tune: $(OUT)
-	$(PYTHON) benchmark.py --binary ./$(OUT) --size $(SIZE) --tune
-
-single: $(OUT)
-	./$(OUT) $(SIZE)
+tune: build
+	$(PYTHON) runner.py $(FAMILY) $(SIZE) tune
 
 clean:
-	$(RM) *.out $(PROTOCOL)
+	$(RM) -r $(BUILD)
 
-.PHONY: run tune single clean
+.PHONY: build run tune clean
