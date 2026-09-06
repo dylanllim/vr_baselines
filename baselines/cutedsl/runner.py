@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import statistics
 import subprocess
 import sys
 
@@ -18,6 +19,10 @@ TIME = re.compile(r"CUTEDSL_RESULT_US=([0-9.eE+-]+)")
 ENV = os.environ.copy()
 ENV["PYTHONPATH"] = os.pathsep.join(filter(None, (
     str(HERE.parent), str(CUTEDSL), str(CUTEDSL / "cute"), ENV.get("PYTHONPATH"))))
+BASE_FAMILY = {
+    "fp8": "fp8", "nvfp4": "nvfp4",
+    "fp8_fp8": "fp8", "nvfp4_fp4": "nvfp4",
+}
 
 
 def csv_rows(name):
@@ -25,14 +30,49 @@ def csv_rows(name):
         return list(csv.DictReader(source))
 
 
-def candidates(family):
+def grouped_candidates(size):
+    for inst_m in (128, 256):
+        clusters = [(m, n) for m in (1, 2, 4) for n in (1, 2, 4)
+                    if m * n <= 16 and (inst_m == 128 or m % 2 == 0)]
+        for inst_n in (64, 128, 192, 256):
+            for tiler_m in (inst_m, 2 * inst_m):
+                common = {
+                    "mma_inst": f"{inst_m}x{inst_n}x128",
+                    "mma_tiler": f"{tiler_m}x{inst_n}x256",
+                }
+                for cluster in clusters:
+                    label = f"{cluster[0]}x{cluster[1]}"
+                    for cached in ("0", "1"):
+                        yield common | {
+                            "id": f"grouped_{inst_m}_{inst_n}_{tiler_m}_{label}_{cached}",
+                            "cluster": label, "variant": "grouped", "cached": cached,
+                        }
+                    if size < tiler_m * cluster[0] or size < inst_n * cluster[1]:
+                        continue
+                    for fallback in clusters:
+                        if fallback == cluster or any(
+                                p % f for p, f in zip(cluster, fallback)):
+                            continue
+                        fallback_label = f"{fallback[0]}x{fallback[1]}"
+                        yield common | {
+                            "id": f"mixed_{inst_m}_{inst_n}_{tiler_m}_{label}_{fallback_label}",
+                            "cluster": label, "variant": "grouped_mixed",
+                            "fallback": fallback_label,
+                        }
+
+
+def candidates(family, size):
+    if family == "nvfp4_fp4":
+        yield from grouped_candidates(size)
+        return
     seen = set()
-    for row in csv_rows(f"{family}.csv"):
-        persistent = family == "fp8" or (row.get("variant") or "persistent") == "persistent"
+    base = BASE_FAMILY[family]
+    for row in csv_rows(f"{base}.csv"):
+        persistent = base == "fp8" or (row.get("variant") or "persistent") == "persistent"
         knobs = []
         if persistent:
             knobs += [("swizzle", (1, 2, 4, 8)), ("raster", ("m", "n"))]
-        if family == "nvfp4":
+        if base == "nvfp4":
             if persistent:
                 knobs += [("scheduler", ("static_persistent", "clc_dynamic_persistent"))]
             knobs += [("prefetch", ("auto", 0, 1, 2, 3, 4))]
@@ -51,11 +91,13 @@ def pinned(family, size):
     raise SystemExit(f"no pinned CuTeDSL winner for {family} {size}; run tune")
 
 
-def measure(family, size, config, report_failure=False):
-    command = [sys.executable, HERE / "src" / f"{family}.py", str(size),
-               json.dumps(config, separators=(",", ":"))]
+def measure(family, size, config, report_failure=False, screen=False):
+    source = HERE / "src" / f"{BASE_FAMILY[family]}.py"
+    command = [sys.executable, source, str(size),
+               json.dumps(config, separators=(",", ":")), family]
+    env = ENV | ({"BASELINE_TUNE_SCREEN": "1"} if screen else {})
     result = subprocess.run(command, text=True, stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, env=ENV)
+                            stderr=subprocess.STDOUT, env=env)
     match = TIME.search(result.stdout)
     if report_failure and (result.returncode or not match):
         print(result.stdout, end="", file=sys.stderr)
@@ -66,15 +108,30 @@ def main(argv=sys.argv[1:]):
     if len(argv) not in (2, 3) or (len(argv) == 3 and argv[2] != "tune"):
         raise SystemExit("usage: runner.py FAMILY SIZE [tune]")
     family, size = argv[:2]
-    if family not in ("fp8", "nvfp4") or (size := int(size)) not in SIZES:
+    if family not in BASE_FAMILY or (size := int(size)) not in SIZES:
         raise SystemExit("unsupported family or size")
 
     if len(argv) == 3:
-        timings = [(elapsed, config) for config in candidates(family)
-                   if (elapsed := measure(family, size, config)) is not None]
+        configs = list(candidates(family, size))
+        timings = [(elapsed, config) for config in configs
+                   if (elapsed := measure(
+                       family, size, config, screen=True)) is not None]
         if not timings:
             raise SystemExit("all candidates failed")
-        _, winner = min(timings, key=lambda item: item[0])
+        finalists = sorted(timings, key=lambda item: item[0])[:50]
+        finalists = [(elapsed, config) for _, config in finalists
+                     if (elapsed := measure(family, size, config)) is not None]
+        top = sorted(finalists, key=lambda item: item[0])[:10]
+        ranked = []
+        for _, config in top:
+            repeats = [measure(family, size, config) for _ in range(3)]
+            if all(value is not None for value in repeats):
+                ranked.append((statistics.median(repeats), config))
+        if not ranked:
+            raise SystemExit("all top candidates failed")
+        _, winner = min(ranked, key=lambda item: item[0])
+        print(f"SEARCH attempted={len(configs)} supported={len(timings)} screen=1+3 "
+              f"finalists={len(finalists)}x5+10 top={len(top)}x3x5+10")
         print("ALGORITHM " + " ".join(f"{key}={value}" for key, value in winner.items()))
     else:
         winner = pinned(family, size)

@@ -101,7 +101,10 @@ inline void fill_zero(T* data, size_t count) {
 
 class LtPlan {
  public:
-  LtPlan(int size, cudaDataType_t input_type) : input_type(input_type) {
+  LtPlan(int size, cudaDataType_t input_type,
+         cudaDataType_t c_type = CUDA_R_16BF,
+         cudaDataType_t d_type = CUDA_R_16BF)
+      : input_type(input_type), c_type(c_type), d_type(d_type) {
     CHECK_CUBLAS(cublasLtCreate(&handle));
     CHECK_CUBLAS(cublasLtMatmulDescCreate(
         &operation, CUBLAS_COMPUTE_32F, CUDA_R_32F));
@@ -119,7 +122,9 @@ class LtPlan {
     CHECK_CUBLAS(cublasLtMatrixLayoutCreate(
         &b_layout, input_type, size, size, size));
     CHECK_CUBLAS(cublasLtMatrixLayoutCreate(
-        &output_layout, CUDA_R_16BF, size, size, size));
+        &c_layout, c_type, size, size, size));
+    CHECK_CUBLAS(cublasLtMatrixLayoutCreate(
+        &d_layout, d_type, size, size, size));
 
     CHECK_CUDA(cudaMalloc(&workspace, kWorkspaceBytes));
     CHECK_CUBLAS(cublasLtMatmulPreferenceCreate(&preference));
@@ -132,7 +137,8 @@ class LtPlan {
     CHECK_CUBLAS(cublasLtMatmulPreferenceDestroy(preference));
     CHECK_CUBLAS(cublasLtMatrixLayoutDestroy(a_layout));
     CHECK_CUBLAS(cublasLtMatrixLayoutDestroy(b_layout));
-    CHECK_CUBLAS(cublasLtMatrixLayoutDestroy(output_layout));
+    CHECK_CUBLAS(cublasLtMatrixLayoutDestroy(c_layout));
+    CHECK_CUBLAS(cublasLtMatrixLayoutDestroy(d_layout));
     CHECK_CUBLAS(cublasLtMatmulDescDestroy(operation));
     CHECK_CUBLAS(cublasLtDestroy(handle));
     CHECK_CUDA(cudaFree(workspace));
@@ -149,11 +155,11 @@ class LtPlan {
 
   cublasLtHandle_t handle{};
   cublasLtMatmulDesc_t operation{};
-  cublasLtMatrixLayout_t a_layout{}, b_layout{}, output_layout{};
+  cublasLtMatrixLayout_t a_layout{}, b_layout{}, c_layout{}, d_layout{};
   cublasLtMatmulPreference_t preference{};
   cublasLtMatmulHeuristicResult_t selected{};
   void* workspace{};
-  cudaDataType_t input_type;
+  cudaDataType_t input_type, c_type, d_type;
 };
 
 struct Measurement {
@@ -175,7 +181,7 @@ Measurement measure(int size, Workload& workload) {
 
   CHECK_CUDA(cudaEventRecord(start, stream));
   for (int i = 0; i < BENCHMARK_ITERATIONS; ++i)
-    workload.run(i % workload.groups(), stream);
+    workload.run((BENCHMARK_WARMUPS + i) % workload.groups(), stream);
   CHECK_CUDA(cudaEventRecord(stop, stream));
   CHECK_CUDA(cudaEventSynchronize(stop));
 

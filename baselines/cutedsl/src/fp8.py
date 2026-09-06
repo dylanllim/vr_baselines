@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 
 import cutlass
@@ -33,7 +34,7 @@ def patch_base():
     base._compute_grid = staticmethod(grid)
 
 
-def run(size, config):
+def run(size, config, low_output=False):
     patch_base()
     original = kernel.prepare_tensors
 
@@ -47,15 +48,21 @@ def run(size, config):
         return tensors
 
     kernel.prepare_tensors = uniform
+    screen = os.getenv("BASELINE_TUNE_SCREEN") == "1"
+    warmups, iterations = (1, 3) if screen else (WARMUPS, ITERATIONS)
     return kernel.run(
         (size, size, size, 1),
         cutlass.Float8E4M3FN, cutlass.Float8E4M3FN,
-        cutlass.BFloat16, cutlass.Float32, "k", "k", "n",
+        cutlass.Float8E4M3FN if low_output else cutlass.BFloat16,
+        cutlass.Float32, "k", "k", "n",
         shape(config["mma_tiler"]), shape(config["mma_inst"]),
         shape(config["cluster"]), int(config.get("swizzle", 1)),
         config.get("raster", "m"), config.get("two_cta", "0") == "1",
-        True, 0.1, WARMUPS, ITERATIONS, True, COLD_L2, True)
+        True, 0.1, warmups, iterations, True, COLD_L2, True)
 
 
 if __name__ == "__main__":
-    print(f"CUTEDSL_RESULT_US={float(run(int(sys.argv[1]), json.loads(sys.argv[2])))}")
+    result = run(
+        int(sys.argv[1]), json.loads(sys.argv[2]),
+        len(sys.argv) == 4 and sys.argv[3] == "fp8_fp8")
+    print(f"CUTEDSL_RESULT_US={float(result)}")

@@ -1,5 +1,5 @@
-# FP8:   make FAMILY=fp8 build    # src/fp8.cu   -> build/fp8
-# NVFP4: make FAMILY=nvfp4 build  # src/nvfp4.cu -> build/nvfp4
+# BF16 output: FAMILY=fp8 or FAMILY=nvfp4
+# Low-precision output: FAMILY=fp8_fp8 or FAMILY=nvfp4_fp4
 # Replace `build` with `run` or `tune` to execute the selected family.
 FAMILY ?= fp8
 SIZE ?= 8192

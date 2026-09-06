@@ -11,7 +11,7 @@ FP8_RANGE = (-448.0, 448.0)
 NVFP4_RANGE = (-6.0, 6.0)
 NVFP4_CODES = (0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0,
                 -0.0, -0.5, -1.0, -1.5, -2.0, -3.0, -4.0, -6.0)
-NVFP4_PACKED_RANGE = (0.0, 255.0)
+NVFP4_PACKED_RANGE = (0.0, 255.0)  # Inclusive byte values.
 NVFP4_SCALE_RANGE = (0.1, 10.0)
 
 
