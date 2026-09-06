@@ -1,6 +1,7 @@
 # Vera Rubin GEMM baselines
 
-Minimal reproduction of the cuBLASLt, CuTeDSL, and CUTLASS FP8/NVFP4 baselines.
+Minimal reproduction of the cuBLASLt, CuTeDSL, and CUTLASS FP8, MXFP8, and
+NVFP4 baselines.
 
 ## Setup
 
@@ -16,6 +17,8 @@ git submodule update --init
 - Square `M=N=K`: `1024 2048 4096 8192 16384 32768` only.
 - Seed: `2024`.
 - FP8 inputs: uniform `[-448,448]`, quantized to E4M3.
+- MXFP8 inputs: the same E4M3 distribution with UE8M0 block-32 scales
+  initialized uniformly in `[0.1,10]` before quantization.
 - NVFP4 inputs: uniform packed E2M1 codes; UE4M3 block and FP32 global scales uniform `[0.1,10]` where the API exposes them.
 - Every reported sample: 5 warmups + 10 timed launches.
 - Cold-L2 mode flushes cache and/or rotates disjoint buffers, as supported by each backend.
@@ -36,6 +39,17 @@ entry is the mean of five fresh samples under the fixed protocol above (CUDA
 | 8,192 | 18,466 | 18,381 | 13,287 |
 | 16,384 | 20,892 | 21,214 | 12,378 |
 | 32,768 | 19,216 | 21,102 | 9,948 |
+
+### MXFP8, bf16 out
+
+| M=N=K | CuTeDSL | cuBLASLt | CUTLASS |
+|---:|---:|---:|---:|
+| 1,024 | 172 | 523 | 414 |
+| 2,048 | 1,441 | 2,448 | 1,974 |
+| 4,096 | 6,437 | 6,096 | 5,256 |
+| 8,192 | 10,849 | 10,563 | 6,897 |
+| 16,384 | 11,266 | 11,405 | 6,954 |
+| 32,768 | 8,580 | 8,478 | 4,733 |
 
 ### FP8, bf16 out
 
@@ -80,7 +94,7 @@ CUDA_VISIBLE_DEVICES=<gpu> make -C baselines/<backend> \
 ```
 
 - Backends: `cublas`, `cutedsl`, or `cutlass`.
-- Families: `fp8` and `nvfp4` emit BF16 on all backends; `fp8_fp8` and
+- Families: `fp8`, `mxfp8`, and `nvfp4` emit BF16 on all backends; `fp8_fp8` and
   `nvfp4_fp4` select low-precision output in cuBLASLt and CuTeDSL.
 - Sizes: `1024`, `2048`, `4096`, `8192`, `16384`, or `32768`.
 - `run` replays the pinned winner and collects five fresh samples.
@@ -95,7 +109,9 @@ CUDA_VISIBLE_DEVICES=1 make -C baselines/cutedsl FAMILY=fp8 SIZE=8192 run
 CUDA_VISIBLE_DEVICES=1 make -C baselines/cutlass FAMILY=fp8 SIZE=8192 run
 ```
 
-Use `FAMILY=nvfp4` for NVFP4. Set `PYTHON=/path/to/python` on any command if the required Python packages are not installed in the default interpreter.
+Use `FAMILY=mxfp8` for MXFP8 or `FAMILY=nvfp4` for NVFP4. Set
+`PYTHON=/path/to/python` if the required packages are not installed in the
+default interpreter.
 
 ### Backend setup
 
@@ -107,12 +123,17 @@ Use `FAMILY=nvfp4` for NVFP4. Set `PYTHON=/path/to/python` on any command if the
 make -C baselines/cutlass build
 ```
 
-CUTLASS builds 40 SM107a kernels per datatype. The stock profiler cannot independently initialize packed E2M1 operands and UE4M3 scales with the ranges required by our shared protocol. The build therefore applies [`protocol.patch`](baselines/cutlass/patches/protocol.patch) temporarily and restores the pinned submodule afterward. The patch changes profiler data initialization only, not the GEMM kernels.
+CUTLASS builds 40 FP8, 10 MXFP8, and 40 NVFP4 SM107a kernels. The stock profiler cannot
+independently initialize MXFP8/NVFP4 scales, or packed E2M1 operands, with the
+ranges required by our shared protocol. The build therefore applies
+[`protocol.patch`](baselines/cutlass/patches/protocol.patch) temporarily and
+restores the pinned submodule afterward. The patch changes profiler data
+initialization only, not the GEMM kernels.
 
-CuTeDSL searches 104 checked-in dense FP8 configurations or 1,374 dense NVFP4
-configurations per shape. Its FP4-output search attempts the complete stock
+CuTeDSL searches 104 checked-in dense FP8 configurations or 1,374 dense
+MXFP8/NVFP4 configurations per shape. Its FP4-output search attempts the complete stock
 Rubin grouped and mixed-cluster structural space: 516 configurations at 1K and
-552 at larger sizes. CUTLASS screens all 40 compiled kernels per datatype for two seconds.
+552 at larger sizes. CUTLASS screens every matching compiled kernel for two seconds.
 cuBLASLt enumerates every compatible algorithm ID and its reported structural
 choices. It tests split-K 1 plus `2,3,4,5,6,8,12,16,32` with every supported
 reduction scheme, screens with 1+3, retimes the best 100 with 5+10, and ranks

@@ -1,4 +1,4 @@
-# BF16 output: FAMILY=fp8 or FAMILY=nvfp4
+# BF16 output: FAMILY=fp8, FAMILY=mxfp8, or FAMILY=nvfp4
 # Low-precision output: FAMILY=fp8_fp8 or FAMILY=nvfp4_fp4
 # Replace `build` with `run` or `tune` to execute the selected family.
 FAMILY ?= fp8

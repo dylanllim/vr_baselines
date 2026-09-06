@@ -52,7 +52,7 @@ index 760a2591..ac14a9ea 100644
  #include "cutlass/profiler/device_context.h"
  
  namespace cutlass {
-@@ -145,6 +147,16 @@ DeviceAllocation *DeviceContext::allocate_and_initialize_tensor(
+@@ -145,6 +147,25 @@ DeviceAllocation *DeviceContext::allocate_and_initialize_tensor(
    if (options.initialization.enabled) {
      Distribution data_distribution = options.initialization.data_distribution;
  
@@ -60,6 +60,15 @@ index 760a2591..ac14a9ea 100644
 +        type == library::NumericTypeID::kFUE4M3) {
 +      char const *low = std::getenv("BASELINE_NVFP4_SCALE_LOW");
 +      char const *high = std::getenv("BASELINE_NVFP4_SCALE_HIGH");
++      if (low && high) {
++        data_distribution.set_uniform(
++          std::strtod(low, nullptr), std::strtod(high, nullptr), -1);
++      }
++    }
++    if ((name == "SFA" || name == "SFB") &&
++        type == library::NumericTypeID::kFUE8M0) {
++      char const *low = std::getenv("BASELINE_MXFP8_SCALE_LOW");
++      char const *high = std::getenv("BASELINE_MXFP8_SCALE_HIGH");
 +      if (low && high) {
 +        data_distribution.set_uniform(
 +          std::strtod(low, nullptr), std::strtod(high, nullptr), -1);

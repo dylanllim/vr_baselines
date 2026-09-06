@@ -15,7 +15,7 @@ def main(argv=sys.argv[1:]):
     if len(argv) not in (2, 3) or (len(argv) == 3 and argv[2] != "tune"):
         raise SystemExit("usage: runner.py FAMILY SIZE [tune]")
     family, size = argv[:2]
-    if family not in ("fp8", "nvfp4", "fp8_fp8", "nvfp4_fp4") or \
+    if family not in ("fp8", "mxfp8", "nvfp4", "fp8_fp8", "nvfp4_fp4") or \
             (size := int(size)) not in SIZES:
         raise SystemExit("unsupported family or size")
     binary = HERE / "build" / family

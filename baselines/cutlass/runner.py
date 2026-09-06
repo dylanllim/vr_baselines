@@ -8,9 +8,9 @@ import sys
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
-from protocol import (COLD_L2, FP8_RANGE, ITERATIONS, NVFP4_PACKED_RANGE,
-                      NVFP4_RANGE, NVFP4_SCALE_RANGE, SAMPLES, SEED, SIZES,
-                      WARMUPS)
+from protocol import (COLD_L2, FP8_RANGE, ITERATIONS, MXFP8_SCALE_RANGE,
+                      NVFP4_PACKED_RANGE, NVFP4_RANGE, NVFP4_SCALE_RANGE,
+                      SAMPLES, SEED, SIZES, WARMUPS)
 
 
 def uniform(bounds):
@@ -21,6 +21,11 @@ FAMILIES = {
     "fp8": (
         "gemm",
         "cutlass3x_sm107_tensorop_gemm_e4m3_e4m3_f32_bf16_bf16*",
+        uniform(FP8_RANGE),
+    ),
+    "mxfp8": (
+        "block_scaled_gemm",
+        "cutlass3x_sm107_bstensorop_gemm_ue8m0xe4m3_ue8m0xe4m3_f32_void_bf16*",
         uniform(FP8_RANGE),
     ),
     "nvfp4": (
@@ -55,6 +60,11 @@ def run(command, log, family):
             "BASELINE_NVFP4_PACKED_HIGH": str(NVFP4_PACKED_RANGE[1]),
             "BASELINE_NVFP4_SCALE_LOW": str(NVFP4_SCALE_RANGE[0]),
             "BASELINE_NVFP4_SCALE_HIGH": str(NVFP4_SCALE_RANGE[1]),
+        }
+    elif family == "mxfp8":
+        env |= {
+            "BASELINE_MXFP8_SCALE_LOW": str(MXFP8_SCALE_RANGE[0]),
+            "BASELINE_MXFP8_SCALE_HIGH": str(MXFP8_SCALE_RANGE[1]),
         }
     with log.open("w") as output:
         result = subprocess.run(

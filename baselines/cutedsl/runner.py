@@ -20,7 +20,7 @@ ENV = os.environ.copy()
 ENV["PYTHONPATH"] = os.pathsep.join(filter(None, (
     str(HERE.parent), str(CUTEDSL), str(CUTEDSL / "cute"), ENV.get("PYTHONPATH"))))
 BASE_FAMILY = {
-    "fp8": "fp8", "nvfp4": "nvfp4",
+    "fp8": "fp8", "mxfp8": "mxfp8", "nvfp4": "nvfp4",
     "fp8_fp8": "fp8", "nvfp4_fp4": "nvfp4",
 }
 
@@ -72,7 +72,7 @@ def candidates(family, size):
         knobs = []
         if persistent:
             knobs += [("swizzle", (1, 2, 4, 8)), ("raster", ("m", "n"))]
-        if base == "nvfp4":
+        if base in ("mxfp8", "nvfp4"):
             if persistent:
                 knobs += [("scheduler", ("static_persistent", "clc_dynamic_persistent"))]
             knobs += [("prefetch", ("auto", 0, 1, 2, 3, 4))]
